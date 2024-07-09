@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>質問サイト</title>
+    <script type="module">
+        // Firebaseの設定
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.4.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/9.4.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyDFCHH_eiKoiKqQl3R8i3NQAujIEe8OFlY",
+          authDomain: "project-6403388934616559935.firebaseapp.com",
+          projectId: "project-6403388934616559935",
+          storageBucket: "project-6403388934616559935.appspot.com",
+          messagingSenderId: "807160521564",
+          appId: "1:807160521564:web:e45484afc800b600341799",
+          measurementId: "G-HETP75RF27"
+        };
+
+        // Firebase初期化
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ページの表示を切り替える関数
+        window.showPage = function(pageId) {
+            document.querySelectorAll('.page').forEach(page => page.style.display = 'none');
+            document.getElementById(pageId).style.display = 'block';
+        }
+
+        // 質問をFirestoreに保存する関数
+        window.submitQuestion = async function(event) {
+            event.preventDefault();
+            const grade = document.getElementById('grade').value;
+            const department = document.getElementById('department').value;
+            const subject = document.getElementById('subject').value;
+            const question = document.getElementById('question').value;
+
+            try {
+                await addDoc(collection(db, 'questions'), {
+                    grade,
+                    department,
+                    subject,
+                    question,
+                    answered: false,
+                    answer: ''
+                });
+
+                document.getElementById('askForm').reset(); // フォームをリセット
+                showPage('homePage'); // ホームページに移動
+            } catch (error) {
+                console.error("Error adding document: ", error);
+            }
+        }
+
+        // 回答フォームを表示する関数
+        window.showAnswerForm = function(questionId, questionText) {
+            document.getElementById('questionId').value = questionId;
+            document.getElementById('questionText').textContent = questionText;
+            document.getElementById('answerForm').style.display = 'block';
+        }
+
+        // 質問に回答する関数
+        window.submitAnswer = async function(event) {
+            event.preventDefault();
+            const questionId = document.getElementById('questionId').value;
+            const answer = document.getElementById('answer').value;
+
+            try {
+                await updateDoc(doc(db, 'questions', questionId), {
+                    answered: true,
+                    answer
+                });
+
+                document.getElementById('answerForm').reset(); // フォームをリセット
+                showPage('homePage'); // ホームページに移動
+            } catch (error) {
+                console.error("Error updating document: ", error);
+            }
+        }
+
+        // ページロード時に質問と回答のリアルタイム更新を行う
+        window.onload = () => {
+            showPage('homePage');
+            // 質問リストのリアルタイム更新
+            onSnapshot(collection(db, 'questions'), (snapshot) => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added' || change.type === 'modified') {
+                        const data = change.doc.data();
+                        if (data.answered) {
+                            // 回答済みの質問を更新
+                            loadAnsweredQuestions();
+                        } else {
+                            // 未回答の質問を更新
+                            loadUnansweredQuestions();
+                        }
+                    }
+                });
+            });
+        }
+    </script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+
+        #main, #askPage, #answerPage, #answerInputPage {
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+        }
+
+        h2 {
+            color: #0874d8;
+        }
+
+        button {
+            display: inline-block;
+            background-color: #0874d8;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        .answer-item, .question-item {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .answer-item p, .question-item p {
+            margin: 10px 0;
+        }
+
+        label {
+            font-weight: bold;
+        }
+
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid #eee;
+            margin: 20px 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="main">
+        <button id="askBtn">質問する</button>
+        <button id="answerBtn">回答する</button>
+        <div id="answeredQuestions">
+            <h2>回答一覧</h2>
+            <div id="answerList"></div>
+        </div>
+    </div>
+
+    <div id="askPage" class="hidden">
+        <h2>質問する</h2>
+        <form id="askForm">
+            <label for="grade">学年:</label>
+            <select id="grade" name="grade">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+            </select><br><br>
+            <label for="department">学科:</label>
+            <select id="department" name="department">
+                <option value="M">M</option>
+                <option value="E">E</option>
+                <option value="D">D</option>
+                <option value="J">J</option>
+                <option value="C">C</option>
+                <option value="None">なし</option>
+            </select><br><br>
+            <label for="subject">科目名:</label>
+            <input type="text" id="subject" name="subject"><br><br>
+            <label for="question">質問:</label>
+            <textarea id="question" name="question"></textarea><br><br>
+            <button type="button" id="submitQuestion">送信</button>
+        </form>
+        <button id="backToMainFromAsk">戻る</button>
+    </div>
+
+    <div id="answerPage" class="hidden">
+        <h2>回答する</h2>
+        <div id="questionList"></div>
+        <button id="backToMainFromAnswer">戻る</button>
+    </div>
+
+    <div id="answerInputPage" class="hidden">
+        <h2>回答を入力</h2>
+        <div id="selectedQuestion"></div>
+        <textarea id="answer" name="answer"></textarea><br><br>
+        <button type="button" id="submitAnswer">送信</button>
+        <button id="backToQuestions">戻る</button>
+    </div>
+
+    <script>
+        document.getElementById('askBtn').addEventListener('click', function() {
+            document.getElementById('main').classList.add('hidden');
+            document.getElementById('askPage').classList.remove('hidden');
+        });
+
+        document.getElementById('answerBtn').addEventListener('click', function() {
+            document.getElementById('main').classList.add('hidden');
+            document.getElementById('answerPage').classList.remove('hidden');
+            displayQuestions();
+        });
+
+        document.getElementById('backToMainFromAsk').addEventListener('click', function() {
+            document.getElementById('askPage').classList.add('hidden');
+            document.getElementById('main').classList.remove('hidden');
+        });
+
+        document.getElementById('backToMainFromAnswer').addEventListener('click', function() {
+            document.getElementById('answerPage').classList.add('hidden');
+            document.getElementById('main').classList.remove('hidden');
+        });
+
+        document.getElementById('backToQuestions').addEventListener('click', function() {
+            document.getElementById('answerInputPage').classList.add('hidden');
+            document.getElementById('answerPage').classList.remove('hidden');
+        });
+
+        let questions = JSON.parse(localStorage.getItem('questions')) || [];
+
+        document.getElementById('submitQuestion').addEventListener('click', function() {
+            let grade = document.getElementById('grade').value;
+            let department = document.getElementById('department').value;
+            let subject = document.getElementById('subject').value;
+            let question = document.getElementById('question').value;
+
+            questions.push({ grade, department, subject, question, answered: false, answer: '' });
+            localStorage.setItem('questions', JSON.stringify(questions));
+
+            document.getElementById('askForm').reset();
+            document.getElementById('askPage').classList.add('hidden');
+            document.getElementById('main').classList.remove('hidden');
+        });
+
+        function displayQuestions() {
+            let questionList = document.getElementById('questionList');
+            questionList.innerHTML = '';
+
+            questions.forEach((q, index) => {
+                if (!q.answered) {
+                    let questionItem = document.createElement('div');
+                    questionItem.classList.add('question-item');
+                    questionItem.innerHTML = `
+                        <p><strong>学年:</strong> ${q.grade}</p>
+                        <p><strong>学科:</strong> ${q.department}</p>
+                        <p><strong>科目名:</strong> ${q.subject}</p>
+                        <p><strong>質問:</strong> ${q.question}</p>
+                        <button onclick="answerQuestion(${index})">回答する</button>
+                        <button onclick="deleteQuestion(${index})">削除する</button>
+                        <hr>
+                    `;
+                    questionList.appendChild(questionItem);
+                }
+            });
+        }
+
+        function answerQuestion(index) {
+            let question = questions[index];
+            document.getElementById('selectedQuestion').innerHTML = `
+                <p><strong>学年:</strong> ${question.grade}</p>
+                <p><strong>学科:</strong> ${question.department}</p>
+                <p><strong>科目名:</strong> ${question.subject}</p>
+                <p><strong>質問:</strong> ${question.question}</p>
+            `;
+            document.getElementById('answerInputPage').classList.remove('hidden');
+            document.getElementById('answerPage').classList.add('hidden');
+
+            document.getElementById('submitAnswer').onclick = function() {
+                let answer = document.getElementById('answer').value;
+                questions[index].answered = true;
+                questions[index].answer = answer;
+
+                localStorage.setItem('questions', JSON.stringify(questions));
+
+                document.getElementById('answer').value = '';
+                document.getElementById('answerInputPage').classList.add('hidden');
+                document.getElementById('answerPage').classList.remove('hidden');
+                displayQuestions();
+                displayAnswers();
+            };
+        }
+
+        function deleteQuestion(index) {
+            questions.splice(index, 1);
+            localStorage.setItem('questions', JSON.stringify(questions));
+            displayQuestions();
+            displayAnswers();
+        }
+
+        function displayAnswers() {
+            let answerList = document.getElementById('answerList');
+            answerList.innerHTML = '';
+
+            questions.forEach((q, index) => {
+                if (q.answered) {
+                    let answerItem = document.createElement('div');
+                    answerItem.classList.add('answer-item');
+                    answerItem.innerHTML = `
+                        <p><strong>学年:</strong> ${q.grade}</p>
+                        <p><strong>学科:</strong> ${q.department}</p>
+                        <p><strong>科目名:</strong> ${q.subject}</p>
+                        <p><strong>質問:</strong> ${q.question}</p>
+                        <p><strong>回答:</strong> ${q.answer}</p>
+                        <button onclick="deleteAnswer(${index})">削除する</button>
+                    `;
+                    answerList.appendChild(answerItem);
+                }
+            });
+        }
+
+        function deleteAnswer(index) {
+            questions.splice(index, 1);
+            localStorage.setItem('questions', JSON.stringify(questions));
+            displayAnswers();
+        }
+
+        // 初期表示のための呼び出し
+        displayAnswers();
+    </script>
+</body>
+</html>
